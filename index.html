@@ -3,161 +3,156 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Панорама с кодом</title>
+    <title>Панорама 360°</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: sans-serif; background: #000; }
-        #panorama { width: 100%; height: 100vh; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
+        #panorama { width: 100%; height: 100vh; background: #111; }
 
-        /* Верхняя панель */
-        .top-bar {
+        .ui-panel {
             position: absolute;
-            top: 10px; left: 10px;
-            z-index: 100;
+            top: 15px; left: 15px;
+            z-index: 1000;
             display: flex;
             gap: 10px;
             align-items: center;
         }
 
-        /* Кнопка с кодом и выпадашка */
-        .code-container {
-            position: relative;
-            display: inline-block;
-        }
-
         .btn {
-            padding: 8px 12px;
-            background: rgba(255,255,255,0.2);
+            background: rgba(40, 40, 40, 0.8);
             color: white;
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 10px 15px;
+            border-radius: 6px;
             cursor: pointer;
-            backdrop-filter: blur(5px);
-            font-size: 14px;
+            transition: 0.3s;
+            font-size: 13px;
+            backdrop-filter: blur(8px);
         }
 
-        .btn:hover { background: rgba(255,255,255,0.4); }
+        .btn:hover { background: rgba(80, 80, 80, 0.9); }
 
-        .code-dropdown {
-            visibility: hidden;
-            opacity: 0;
+        .code-box {
+            position: relative;
+            display: none; /* Скрыт пока нет фото */
+        }
+
+        .code-box:hover .dropdown { opacity: 1; visibility: visible; }
+
+        .dropdown {
             position: absolute;
             top: 100%; left: 0;
-            background: white;
-            color: black;
-            padding: 10px;
-            border-radius: 4px;
             margin-top: 5px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            transition: 0.3s;
-            min-width: 150px;
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            opacity: 0; visibility: hidden;
+            transition: 0.2s;
+            min-width: 140px;
         }
 
-        .code-container:hover .code-dropdown {
-            visibility: visible;
-            opacity: 1;
-        }
-
-        .code-text {
+        .code-value {
             font-family: monospace;
             font-weight: bold;
             font-size: 16px;
-            color: #007bff;
+            color: #e91e63;
+            display: block;
+            margin-top: 5px;
         }
 
-        input[type="text"] {
-            padding: 7px;
-            border-radius: 4px;
+        #codeInput {
+            padding: 10px;
+            border-radius: 6px;
             border: none;
-            outline: none;
+            width: 120px;
+            background: rgba(255,255,255,0.9);
         }
     </style>
 </head>
 <body>
 
-    <div class="top-bar">
-        <input type="file" id="fileInput" style="display:none" accept="image/*">
-        <button class="btn" onclick="document.getElementById('fileInput').click()">Загрузить фото</button>
+    <div class="ui-panel">
+        <input type="file" id="fileInput" hidden accept="image/*">
+        <button class="btn" onclick="document.getElementById('fileInput').click()">📁 Загрузить фото</button>
 
-        <div class="code-container" id="codeSection" style="display:none">
+        <div class="code-box" id="codeWrapper">
             <button class="btn">🔑 Код фото</button>
-            <div class="code-dropdown">
-                Код: <span class="code-text" id="generatedCode">----------</span>
+            <div class="dropdown">
+                <small style="color: #666">Ваш код:</small>
+                <span class="code-value" id="displayCode">----------</span>
             </div>
         </div>
 
-        <input type="text" id="codeInput" placeholder="Введите код...">
-        <button class="btn" onclick="loadByCode()">Открыть</button>
+        <input type="text" id="codeInput" placeholder="Вставить код...">
+        <button class="btn" onclick="applyCode()" style="background: #007bff;">Открыть</button>
     </div>
 
     <div id="panorama"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
-
     <script>
         let viewer = null;
+        let currentPhotos = {}; // Хранилище сессии
 
-        // Инициализация панорамы с плавным зумом
-        function initPano(imgData) {
+        // Функция запуска панорамы
+        function renderPano(imagePath) {
             if (viewer) viewer.destroy();
-            
+
             viewer = pannellum.viewer('panorama', {
                 "type": "equirectangular",
-                "panorama": imgData,
+                "panorama": imagePath,
                 "autoLoad": true,
-                "friction": 0.1,        // Плавность остановки
-                "animationTimingFunction": "easeInOutCubic", // Плавный зум
-                "zoomDuration": 1000,   // Скорость зума
-                "mouseZoom": true
+                "autoRotate": -1,
+                "friction": 0.15,
+                "zoomDuration": 1200, // Плавный зум
+                "animationTimingFunction": "easeInOutQuart",
+                "mouseZoom": true,
+                "showControls": true
             });
         }
 
-        // Генерация случайного кода (10 символов)
-        function generateId() {
-            return Math.random().toString(36).substr(2, 10).toUpperCase();
+        // Генератор кода
+        function makeId() {
+            return Math.random().toString(36).substring(2, 12).toUpperCase();
         }
 
-        // Загрузка файла
-        document.getElementById('fileInput').addEventListener('change', function(e) {
+        // Обработка файла
+        document.getElementById('fileInput').onchange = function(e) {
             const file = e.target.files[0];
             if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const imgData = event.target.result;
-                const newCode = generateId();
+            const objectURL = URL.createObjectURL(file);
+            const newCode = makeId();
 
-                // Сохраняем в память браузера
-                localStorage.setItem(newCode, imgData);
+            // Сохраняем в текущую сессию
+            currentPhotos[newCode] = objectURL;
 
-                // Показываем код
-                document.getElementById('generatedCode').innerText = newCode;
-                document.getElementById('codeSection').style.display = 'block';
+            // Обновляем интерфейс
+            document.getElementById('displayCode').innerText = newCode;
+            document.getElementById('codeWrapper').style.display = 'block';
 
-                initPano(imgData);
-            };
-            reader.readAsDataURL(file);
-        });
+            renderPano(objectURL);
+        };
 
         // Открытие по коду
-        function loadByCode() {
+        function applyCode() {
             const code = document.getElementById('codeInput').value.trim().toUpperCase();
-            const savedImg = localStorage.getItem(code);
-
-            if (savedImg) {
-                initPano(savedImg);
-                document.getElementById('generatedCode').innerText = code;
-                document.getElementById('codeSection').style.display = 'block';
+            if (currentPhotos[code]) {
+                renderPano(currentPhotos[code]);
+                document.getElementById('displayCode').innerText = code;
             } else {
-                alert("Код не найден или срок действия истек");
+                alert("Код не найден. Загрузите фото заново, чтобы получить новый код.");
             }
         }
 
-        // Загрузка стандартного фото при старте (если оно есть в папке)
+        // Загрузка начального фото при запуске
         window.onload = () => {
-            initPano('IMG_1370-fixed.jpg'); 
+            // Если в папке лежит IMG_1370-fixed.jpg, оно откроется. 
+            // Если нет — просто будет черный экран до первой загрузки.
+            renderPano('IMG_1370-fixed.jpg'); 
         };
     </script>
 
