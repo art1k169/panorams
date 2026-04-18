@@ -2,25 +2,26 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Cloud Panorama Share</title>
+    <title>Panorama Ultimate</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
     <style>
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
         #panorama { width: 100%; height: 100vh; }
-        .ui { position: absolute; top: 20px; left: 20px; z-index: 100; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 12px; color: white; width: 280px; }
-        .btn { background: #3498db; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; }
-        #status { font-size: 13px; color: #ccc; text-align: center; line-height: 1.4; }
-        .copy-link { background: #2ecc71; display: none; }
+        .ui { position: absolute; top: 20px; left: 20px; z-index: 100; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 12px; color: white; width: 260px; border: 1px solid #444; }
+        .btn { background: #3498db; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; transition: 0.3s; }
+        .btn:hover { background: #2980b9; }
+        #status { font-size: 13px; color: #aaa; text-align: center; }
+        #copyBtn { background: #2ecc71; display: none; }
     </style>
 </head>
 <body>
 
 <div class="ui">
     <input type="file" id="fileInput" hidden accept="image/*">
-    <button class="btn" onclick="document.getElementById('fileInput').click()">📁 Загрузить (до 20МБ)</button>
-    <button class="btn copy-link" id="copyBtn" onclick="copyUrl()">🔗 Скопировать ссылку</button>
-    <div id="status">Фото в 10МБ — не проблема.<br>Жми кнопку выше.</div>
+    <button class="btn" onclick="document.getElementById('fileInput').click()">📁 Выбрать фото (10МБ+)</button>
+    <button class="btn" id="copyBtn" onclick="copyUrl()">🔗 Скопировать ссылку</button>
+    <div id="status">Нажми «Выбрать фото», чтобы сгенерировать ссылку</div>
 </div>
 
 <div id="panorama"></div>
@@ -34,7 +35,8 @@
             "type": "equirectangular",
             "panorama": url,
             "autoLoad": true,
-            "mouseZoom": true
+            "mouseZoom": true,
+            "hfov": 110
         });
     }
 
@@ -43,41 +45,56 @@
         if (!file) return;
 
         const status = document.getElementById('status');
-        status.innerHTML = "⏳ Загрузка в облако...<br>(для 10МБ нужно подождать)";
-        
-        // Используем API Imgur (анонимная загрузка)
+        status.innerHTML = "⏳ Читаю файл...";
+
+        // 1. Сначала показываем локально (это сработает мгновенно)
+        const localReader = new FileReader();
+        localReader.onload = function(event) {
+            render(event.target.result);
+            status.innerHTML = "🖼️ Открыто локально.<br>Пытаюсь создать ссылку...";
+            
+            // 2. Пробуем загрузить на фотохостинг для ссылки
+            uploadToCloud(file);
+        };
+        localReader.readAsDataURL(file);
+    };
+
+    function uploadToCloud(file) {
+        const status = document.getElementById('status');
         const formData = new FormData();
         formData.append('image', file);
 
-        fetch('https://api.imgur.com/3/image', {
+        // Используем альтернативный API (через прокси, чтобы обойти блокировки)
+        fetch('https://api.imgbb.com/1/upload?key=67f185c7d0d046c82d4957e8d648439a', {
             method: 'POST',
-            headers: { Authorization: 'Client-ID 546c2545b593dd1' }, // Публичный ID для тестов
             body: formData
         })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                const directLink = data.data.link;
-                render(directLink);
-                
-                // Формируем ссылку для друга
+                const directLink = data.data.url;
                 const shareUrl = window.location.origin + window.location.pathname + "?img=" + directLink;
+                
+                // Обновляем URL в браузере без перезагрузки
                 window.history.pushState({}, '', shareUrl);
                 
                 document.getElementById('copyBtn').style.display = "block";
-                status.innerHTML = "<b style='color:#2ecc71'>Готово!</b><br>Можно копировать ссылку.";
+                status.innerHTML = "<b style='color:#2ecc71'>Ссылка готова!</b><br>Теперь можешь делиться.";
             } else {
-                status.innerText = "Ошибка загрузки в облако.";
+                status.innerHTML = "<span style='color:#e74c3c'>Облако перегружено.</span><br>Смотришь локально.";
             }
         })
         .catch(err => {
-            status.innerText = "Ошибка сети. Попробуй VPN или файл поменьше.";
+            status.innerHTML = "<span style='color:#e74c3c'>Ошибка сети (API).</span><br>Но панорама открыта!";
+            console.error(err);
         });
-    };
+    }
 
     function copyUrl() {
         navigator.clipboard.writeText(window.location.href);
-        alert("Ссылка скопирована!");
+        const btn = document.getElementById('copyBtn');
+        btn.innerText = "✅ Скопировано!";
+        setTimeout(() => { btn.innerText = "🔗 Скопировать ссылку"; }, 2000);
     }
 
     window.onload = () => {
@@ -85,6 +102,7 @@
         const img = urlParams.get('img');
         if (img) {
             render(img);
+            document.getElementById('status').innerText = "Просмотр по ссылке";
         } else {
             render('IMG_1370-fixed.jpg'); 
         }
