@@ -2,101 +2,132 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Мои Панорамы</title>
-    
+    <title>Panorama Share Pro</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, sans-serif; }
         #panorama { width: 100%; height: 100vh; }
 
-        .ui-overlay {
+        .menu {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0,0,0,0.7); padding: 15px; border-radius: 12px;
-            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
-            color: white; min-width: 200px;
+            background: rgba(0, 0, 0, 0.8); padding: 20px; border-radius: 15px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white; width: 260px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
-
-        .share-box { margin-top: 15px; padding-top: 15px; border-top: 1px solid #444; }
 
         .btn {
-            background: #3498db; color: white; border: none;
-            padding: 8px 12px; border-radius: 5px; cursor: pointer;
-            width: 100%; font-weight: bold; transition: 0.3s;
+            width: 100%; padding: 12px; margin-bottom: 10px; border: none;
+            border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px;
+            transition: all 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px;
         }
-        .btn:hover { background: #2980b9; }
 
-        input {
-            width: 100%; padding: 8px; border-radius: 5px; border: none;
-            margin-bottom: 10px; background: #222; color: white; box-sizing: border-box;
-        }
+        .btn-upload { background: #3498db; color: white; }
+        .btn-upload:hover { background: #2980b9; transform: translateY(-2px); }
+
+        .btn-link { background: #2ecc71; color: white; display: none; }
+        .btn-link:hover { background: #27ae60; transform: translateY(-2px); }
+
+        #status { font-size: 12px; color: #aaa; text-align: center; margin-top: 5px; }
+        
+        /* Анимация появления */
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
-<div class="ui-overlay">
-    <h3 style="margin: 0 0 10px 0; font-size: 16px;">🌐 Открыть панораму</h3>
+<div class="menu">
+    <h3 style="margin: 0 0 15px 0; font-size: 18px;">📸 Панорама 360°</h3>
     
-    <p style="font-size: 12px; color: #aaa; margin-bottom: 5px;">Введите имя файла из папки:</p>
-    <input type="text" id="fileNameInput" placeholder="Например: 1.jpg">
-    <button class="btn" onclick="loadByInput()">Посмотреть</button>
+    <input type="file" id="fileInput" hidden accept="image/*">
+    <button class="btn btn-upload" onclick="document.getElementById('fileInput').click()">
+        <span>📁</span> Загрузить фото
+    </button>
 
-    <div class="share-box">
-        <button class="btn" style="background: #2ecc71;" onclick="copyLink()">🔗 Ссылка для друга</button>
-        <p id="status" style="font-size: 10px; color: #2ecc71; margin-top: 5px; display: none;">Ссылка скопирована!</p>
-    </div>
+    <button class="btn btn-link" id="linkBtn" onclick="copyShareLink()">
+        <span>🔗</span> Копировать ссылку
+    </button>
+
+    <div id="status">Выберите файл для просмотра</div>
 </div>
 
 <div id="panorama"></div>
 
 <script>
     let viewer = null;
-    let currentFile = "IMG_1370-fixed.jpg"; // Начальный файл
 
-    function render(file) {
+    // Функция отрисовки панорамы с плавным зумом
+    function render(source) {
         if (viewer) viewer.destroy();
-        currentFile = file;
-
         viewer = pannellum.viewer('panorama', {
             "type": "equirectangular",
-            "panorama": file,
+            "panorama": source,
             "autoLoad": true,
-            "friction": 0.15,
-            "zoomDuration": 1200,
+            "friction": 0.1,
+            "zoomDuration": 1500,
             "animationTimingFunction": "easeInOutQuart",
-            "mouseZoom": true
+            "mouseZoom": true,
+            "showControls": true
         });
     }
 
-    // Загрузка по названию файла
-    function loadByInput() {
-        const val = document.getElementById('fileNameInput').value.trim();
-        if (val) render(val);
-    }
+    // Обработка выбора файла
+    document.getElementById('fileInput').onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
 
-    // Генерация ссылки
-    function copyLink() {
-        const url = new URL(window.location.href);
-        url.searchParams.set('img', currentFile);
-        
-        navigator.clipboard.writeText(url.href).then(() => {
-            const status = document.getElementById('status');
-            status.style.display = 'block';
-            setTimeout(() => status.style.display = 'none', 3000);
+        const reader = new FileReader();
+        document.getElementById('status').innerText = "Обработка фото...";
+
+        reader.onload = function(event) {
+            const base64Data = event.target.result;
+            
+            // Запускаем просмотр
+            render(base64Data);
+
+            // Обновляем адресную строку (сохраняем данные в хэш)
+            window.location.hash = "view=" + encodeURIComponent(base64Data);
+            
+            // Показываем кнопку ссылки
+            document.getElementById('linkBtn').style.display = "flex";
+            document.getElementById('status').innerHTML = "Готово! Теперь можно <br>поделиться ссылкой.";
+        };
+        reader.readAsDataURL(file);
+    };
+
+    // Копирование ссылки
+    function copyShareLink() {
+        const fullUrl = window.location.href;
+        navigator.clipboard.writeText(fullUrl).then(() => {
+            const btn = document.getElementById('linkBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "✅ Скопировано!";
+            btn.style.background = "#16a085";
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.style.background = "#2ecc71";
+            }, 2000);
         });
     }
 
-    // При загрузке страницы
+    // Проверка ссылки при открытии
     window.onload = () => {
-        const params = new URLSearchParams(window.location.search);
-        const imgParam = params.get('img');
-        
-        if (imgParam) {
-            render(imgParam);
+        const hash = window.location.hash;
+        if (hash.startsWith("#view=")) {
+            try {
+                const imgData = decodeURIComponent(hash.substring(6));
+                render(imgData);
+                document.getElementById('linkBtn').style.display = "flex";
+                document.getElementById('status').innerText = "Просмотр по ссылке";
+            } catch (err) {
+                console.error("Ошибка при чтении ссылки");
+                render('IMG_1370-fixed.jpg'); 
+            }
         } else {
-            render(currentFile);
+            // Если ссылки нет, открываем стандартное фото из твоей папки
+            render('IMG_1370-fixed.jpg'); 
         }
     };
 </script>
