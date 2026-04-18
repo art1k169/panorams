@@ -2,164 +2,75 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>360° Panorama Viewer + Cloud Memory</title>
-    
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
-    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
-
+    <title>Custom Map & Panorama</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; background: #111; }
-        #panorama { width: 100%; height: 100vh; }
-
-        .ui-overlay {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 100;
-            display: flex;
-            gap: 15px;
-        }
-
-        .btn {
-            background: rgba(30, 30, 30, 0.9);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            border: 1px solid rgba(255,255,255,0.1);
-            font-size: 14px;
-            transition: 0.2s;
-        }
-        .btn:hover { background: #333; border-color: #2196F3; }
-
-        .code-wrapper {
-            position: relative;
-            padding-bottom: 25px; /* Мост для ховера */
-            margin-bottom: -25px;
-        }
-
-        .code-trigger-btn { background: #2196F3; border: none; font-weight: bold; }
-
-        .code-popup {
-            display: none;
-            position: absolute;
-            top: 45px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            color: #333;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
-            width: 280px;
-            text-align: center;
-        }
-
-        .code-wrapper:hover .code-popup { display: block; }
+        body { margin: 0; display: flex; height: 100vh; font-family: sans-serif; }
+        #map { flex: 1; height: 100%; }
+        #pano { width: 400px; height: 100%; background: #333; color: white; display: none; }
         
-        .generated-code {
-            font-family: monospace;
-            font-size: 22px;
-            font-weight: bold;
-            color: #d32f2f;
-            display: block;
-            margin: 10px 0;
-            background: #fdf0f0;
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px dashed #d32f2f;
-        }
-
-        .input-group { display: flex; gap: 5px; margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px; }
-        #inputCode { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; text-transform: uppercase; }
-        .go-btn { background: #28a745; color: white; border: none; padding: 0 15px; border-radius: 4px; cursor: pointer; }
-
-        input[type="file"] { display: none; }
+        /* Стили для окна ввода */
+        .custom-popup input { margin-bottom: 5px; width: 100%; }
+        .custom-popup button { cursor: pointer; background: #4285f4; color: white; border: none; padding: 5px; width: 100%; }
     </style>
 </head>
 <body>
 
-    <div class="ui-overlay">
-        <label class="btn">Загрузить фото <input type="file" id="fileInput" accept="image/*"></label>
+    <div id="map"></div>
+    <div id="pano"></div>
 
-        <div class="code-wrapper">
-            <div class="btn code-trigger-btn">Код / Поделиться</div>
-            <div class="code-popup">
-                <small style="color: #888">Ваш текущий код:</small>
-                <span class="generated-code" id="generatedCode">------</span>
-                
-                <div class="input-group">
-                    <input type="text" id="inputCode" placeholder="Вставьте код" maxlength="10">
-                    <button class="go-btn" onclick="loadByCode()">ОК</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="panorama"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=ВАШ_API_КЛЮЧ"></script>
 
     <script>
-        let viewer = null;
+        // 1. Инициализация карты (OpenStreetMap)
+        const map = L.map('map').setView([55.75, 37.61], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // Инициализация вьювера с плавным зумом
-        function initPanorama(imageSrc) {
-            if (viewer) viewer.destroy();
-            viewer = pannellum.viewer('panorama', {
-                "type": "equirectangular",
-                "panorama": imageSrc,
-                "autoLoad": true,
-                "zoomDuration": 1500, // Очень плавный зум
-                "animationTimingFunction": "easeInOutQuart"
-            });
-        }
+        let lastRightClickPos = null;
 
-        function generateId() {
-            return Math.random().toString(36).substring(2, 12).toUpperCase();
-        }
+        // 2. Обработка правого клика (ПКМ)
+        map.on('contextmenu', function(e) {
+            lastRightClickPos = e.latlng;
 
-        // Загрузка нового файла
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
+            const popupContent = `
+                <div class="custom-popup">
+                    <strong>Добавить место</strong><br>
+                    <input type="text" id="placeName" placeholder="Название...">
+                    <button onclick="saveLocation()">Создать точку</button>
+                </div>
+            `;
 
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const imageData = event.target.result;
-                const newCode = generateId();
-
-                initPanorama(imageData);
-                document.getElementById('generatedCode').innerText = newCode;
-
-                // СОХРАНЯЕМ В ПАМЯТЬ БРАУЗЕРА
-                try {
-                    localStorage.setItem(newCode, imageData);
-                } catch (e) {
-                    alert("Фото слишком тяжелое для памяти браузера, но оно будет работать, пока вы не обновите страницу.");
-                }
-            };
-            reader.readAsDataURL(file);
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent(popupContent)
+                .openOn(map);
         });
 
-        // Поиск по коду в LocalStorage
-        function loadByCode() {
-            const code = document.getElementById('inputCode').value.trim().toUpperCase();
-            const savedImage = localStorage.getItem(code);
+        // 3. Сохранение точки и привязка панорамы
+        function saveLocation() {
+            const name = document.getElementById('placeName').value;
+            if (!name) return;
+
+            const marker = L.marker(lastRightClickPos).addTo(map);
+            marker.bindPopup(`<b>${name}</b><br><button onclick="viewPano(${lastRightClickPos.lat}, ${lastRightClickPos.lng})">Смотреть панораму</button>`);
             
-            if (savedImage) {
-                initPanorama(savedImage);
-                document.getElementById('generatedCode').innerText = code;
-                alert("Успешно загружено из памяти!");
-            } else {
-                alert("Код не найден. Либо вы очистили кэш, либо это фото было загружено на другом компьютере.");
-            }
+            map.closePopup();
         }
 
-        // Стартовое фото
-        window.onload = () => {
-            initPanorama('https://pannellum.org/images/alma.jpg');
-        };
+        // 4. Загрузка панорамы (Google Street View)
+        function viewPano(lat, lng) {
+            const panoElement = document.getElementById('pano');
+            panoElement.style.display = 'block';
+
+            const panorama = new google.maps.StreetViewPanorama(
+                panoElement,
+                {
+                    position: { lat: lat, lng: lng },
+                    pov: { heading: 34, pitch: 10 }
+                }
+            );
+        }
     </script>
 </body>
 </html>
