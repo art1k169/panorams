@@ -2,55 +2,23 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Panorama Share Pro</title>
+    <title>Panorama Viewer</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
-    
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #111; font-family: sans-serif; }
         #panorama { width: 100%; height: 100vh; }
-
-        .menu {
-            position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.8); padding: 20px; border-radius: 15px;
-            backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1);
-            color: white; width: 260px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
-
-        .btn {
-            width: 100%; padding: 12px; margin-bottom: 10px; border: none;
-            border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px;
-            transition: all 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px;
-        }
-
-        .btn-upload { background: #3498db; color: white; }
-        .btn-upload:hover { background: #2980b9; transform: translateY(-2px); }
-
-        .btn-link { background: #2ecc71; color: white; display: none; }
-        .btn-link:hover { background: #27ae60; transform: translateY(-2px); }
-
-        #status { font-size: 12px; color: #aaa; text-align: center; margin-top: 5px; }
-        
-        /* Анимация появления */
-        .fade-in { animation: fadeIn 0.5s ease-in; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .ui { position: absolute; top: 20px; left: 20px; z-index: 100; background: rgba(0,0,0,0.85); padding: 20px; border-radius: 12px; color: white; border: 1px solid #333; }
+        .btn { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; }
+        #status { font-size: 12px; color: #888; }
     </style>
 </head>
 <body>
 
-<div class="menu">
-    <h3 style="margin: 0 0 15px 0; font-size: 18px;">📸 Панорама 360°</h3>
-    
+<div class="ui">
     <input type="file" id="fileInput" hidden accept="image/*">
-    <button class="btn btn-upload" onclick="document.getElementById('fileInput').click()">
-        <span>📁</span> Загрузить фото
-    </button>
-
-    <button class="btn btn-link" id="linkBtn" onclick="copyShareLink()">
-        <span>🔗</span> Копировать ссылку
-    </button>
-
-    <div id="status">Выберите файл для просмотра</div>
+    <button class="btn" onclick="document.getElementById('fileInput').click()">📁 Выбрать панораму</button>
+    <div id="status">Выберите файл .jpg или .png</div>
 </div>
 
 <div id="panorama"></div>
@@ -58,79 +26,42 @@
 <script>
     let viewer = null;
 
-    // Функция отрисовки панорамы с плавным зумом
-    function render(source) {
+    function initPanorama(imageSrc) {
         if (viewer) viewer.destroy();
         viewer = pannellum.viewer('panorama', {
             "type": "equirectangular",
-            "panorama": source,
-            "autoLoad": true,
-            "friction": 0.1,
-            "zoomDuration": 1500,
-            "animationTimingFunction": "easeInOutQuart",
-            "mouseZoom": true,
-            "showControls": true
+            "panorama": imageSrc,
+            "autoLoad": true
         });
     }
 
-    // Обработка выбора файла
     document.getElementById('fileInput').onchange = function(e) {
         const file = e.target.files[0];
         if (!file) return;
 
         const reader = new FileReader();
-        document.getElementById('status').innerText = "Обработка фото...";
+        document.getElementById('status').innerText = "Загрузка...";
 
         reader.onload = function(event) {
-            const base64Data = event.target.result;
+            const data = event.target.result;
+            initPanorama(data);
+            document.getElementById('status').innerText = "Просмотр: " + file.name;
             
-            // Запускаем просмотр
-            render(base64Data);
-
-            // Обновляем адресную строку (сохраняем данные в хэш)
-            window.location.hash = "view=" + encodeURIComponent(base64Data);
-            
-            // Показываем кнопку ссылки
-            document.getElementById('linkBtn').style.display = "flex";
-            document.getElementById('status').innerHTML = "Готово! Теперь можно <br>поделиться ссылкой.";
+            // Если файл меньше 1.5МБ, пробуем создать ссылку, иначе - нет (чтобы не было ошибок)
+            if (file.size < 1500000) {
+                window.location.hash = "view=" + encodeURIComponent(data).substring(0, 10000); // Ограничим для теста
+                document.getElementById('status').innerHTML += "<br><span style='color:green'>Ссылка обновлена</span>";
+            } else {
+                document.getElementById('status').innerHTML += "<br><span style='color:orange'>Файл слишком велик для ссылки</span>";
+            }
         };
         reader.readAsDataURL(file);
     };
 
-    // Копирование ссылки
-    function copyShareLink() {
-        const fullUrl = window.location.href;
-        navigator.clipboard.writeText(fullUrl).then(() => {
-            const btn = document.getElementById('linkBtn');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = "✅ Скопировано!";
-            btn.style.background = "#16a085";
-            setTimeout(() => {
-                btn.innerHTML = originalText;
-                btn.style.background = "#2ecc71";
-            }, 2000);
-        });
-    }
-
-    // Проверка ссылки при открытии
+    // Загрузка дефолтной картинки (если она есть в папке)
     window.onload = () => {
-        const hash = window.location.hash;
-        if (hash.startsWith("#view=")) {
-            try {
-                const imgData = decodeURIComponent(hash.substring(6));
-                render(imgData);
-                document.getElementById('linkBtn').style.display = "flex";
-                document.getElementById('status').innerText = "Просмотр по ссылке";
-            } catch (err) {
-                console.error("Ошибка при чтении ссылки");
-                render('IMG_1370-fixed.jpg'); 
-            }
-        } else {
-            // Если ссылки нет, открываем стандартное фото из твоей папки
-            render('IMG_1370-fixed.jpg'); 
-        }
+        initPanorama('IMG_1370-fixed.jpg'); 
     };
 </script>
-
 </body>
 </html>
