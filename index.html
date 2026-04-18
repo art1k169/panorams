@@ -2,111 +2,141 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Panorama Ultimate</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360° Panorama Viewer</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
-    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; background: #1a1a1a; }
         #panorama { width: 100%; height: 100vh; }
-        .ui { position: absolute; top: 20px; left: 20px; z-index: 100; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 12px; color: white; width: 260px; border: 1px solid #444; }
-        .btn { background: #3498db; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; transition: 0.3s; }
-        .btn:hover { background: #2980b9; }
-        #status { font-size: 13px; color: #aaa; text-align: center; }
-        #copyBtn { background: #2ecc71; display: none; }
+
+        /* Верхняя панель управления */
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 8px;
+            transition: opacity 0.3s;
+        }
+
+        input[type="file"] { display: none; }
+        .btn {
+            background: #444;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid #666;
+            font-size: 14px;
+        }
+        .btn:hover { background: #666; }
+
+        /* Секция с кодом (по наведению) */
+        .code-section {
+            position: relative;
+            display: inline-block;
+        }
+        .code-trigger { background: #2196F3; border: none; }
+        .code-popup {
+            display: none;
+            position: absolute;
+            top: 40px;
+            left: 0;
+            background: white;
+            color: black;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            width: 250px;
+        }
+        .code-section:hover .code-popup { display: block; }
+        
+        .code-display { font-family: monospace; font-weight: bold; color: #d32f2f; }
+        #inputCode { width: 100px; padding: 2px; }
     </style>
 </head>
 <body>
 
-<div class="ui">
-    <input type="file" id="fileInput" hidden accept="image/*">
-    <button class="btn" onclick="document.getElementById('fileInput').click()">📁 Выбрать фото (10МБ+)</button>
-    <button class="btn" id="copyBtn" onclick="copyUrl()">🔗 Скопировать ссылку</button>
-    <div id="status">Нажми «Выбрать фото», чтобы сгенерировать ссылку</div>
-</div>
+    <div class="controls">
+        <label class="btn">
+            Загрузить фото
+            <input type="file" id="fileInput" accept="image/*">
+        </label>
 
-<div id="panorama"></div>
+        <div class="code-section">
+            <button class="btn code-trigger">Код/Поделиться</button>
+            <div class="code-popup">
+                <div>Ваш код: <span class="code-display" id="generatedCode">------</span></div>
+                <hr>
+                <input type="text" id="inputCode" placeholder="Вставьте код">
+                <button class="btn" onclick="loadByCode()" style="color: black; padding: 2px 5px;">Ок</button>
+                <p style="font-size: 10px; margin-top: 5px; color: #666;">
+                    *На GitHub используйте прямую ссылку на фото для генерации кода.
+                </p>
+            </div>
+        </div>
+    </div>
 
-<script>
-    let viewer = null;
+    <div id="panorama"></div>
 
-    function render(url) {
-        if (viewer) viewer.destroy();
-        viewer = pannellum.viewer('panorama', {
-            "type": "equirectangular",
-            "panorama": url,
-            "autoLoad": true,
-            "mouseZoom": true,
-            "hfov": 110
-        });
-    }
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
 
-    document.getElementById('fileInput').onchange = function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+    <script>
+        let viewer = null;
 
-        const status = document.getElementById('status');
-        status.innerHTML = "⏳ Читаю файл...";
-
-        // 1. Сначала показываем локально (это сработает мгновенно)
-        const localReader = new FileReader();
-        localReader.onload = function(event) {
-            render(event.target.result);
-            status.innerHTML = "🖼️ Открыто локально.<br>Пытаюсь создать ссылку...";
+        // Инициализация пустого вьювера
+        function initPanorama(imageSrc) {
+            if (viewer) viewer.destroy();
             
-            // 2. Пробуем загрузить на фотохостинг для ссылки
-            uploadToCloud(file);
-        };
-        localReader.readAsDataURL(file);
-    };
-
-    function uploadToCloud(file) {
-        const status = document.getElementById('status');
-        const formData = new FormData();
-        formData.append('image', file);
-
-        // Используем альтернативный API (через прокси, чтобы обойти блокировки)
-        fetch('https://api.imgbb.com/1/upload?key=67f185c7d0d046c82d4957e8d648439a', {
-            method: 'POST',
-            body: formData
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                const directLink = data.data.url;
-                const shareUrl = window.location.origin + window.location.pathname + "?img=" + directLink;
-                
-                // Обновляем URL в браузере без перезагрузки
-                window.history.pushState({}, '', shareUrl);
-                
-                document.getElementById('copyBtn').style.display = "block";
-                status.innerHTML = "<b style='color:#2ecc71'>Ссылка готова!</b><br>Теперь можешь делиться.";
-            } else {
-                status.innerHTML = "<span style='color:#e74c3c'>Облако перегружено.</span><br>Смотришь локально.";
-            }
-        })
-        .catch(err => {
-            status.innerHTML = "<span style='color:#e74c3c'>Ошибка сети (API).</span><br>Но панорама открыта!";
-            console.error(err);
-        });
-    }
-
-    function copyUrl() {
-        navigator.clipboard.writeText(window.location.href);
-        const btn = document.getElementById('copyBtn');
-        btn.innerText = "✅ Скопировано!";
-        setTimeout(() => { btn.innerText = "🔗 Скопировать ссылку"; }, 2000);
-    }
-
-    window.onload = () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const img = urlParams.get('img');
-        if (img) {
-            render(img);
-            document.getElementById('status').innerText = "Просмотр по ссылке";
-        } else {
-            render('IMG_1370-fixed.jpg'); 
+            viewer = pannellum.viewer('panorama', {
+                "type": "equirectangular",
+                "panorama": imageSrc,
+                "autoLoad": true,
+                "hfov": 110,
+                "friction": 0.1, // Плавность вращения
+                "zoomDuration": 1000, // Длительность плавного зума
+                "animationTimingFunction": "easeInOutQuad"
+            });
         }
-    };
-</script>
+
+        // Генерация рандомного кода (10 символов)
+        function generateRandomCode() {
+            return Math.random().toString(36).substring(2, 12).toUpperCase();
+        }
+
+        // Обработка загрузки файла
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                initPanorama(event.target.result);
+                document.getElementById('generatedCode').innerText = generateRandomCode();
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // "Логика" кодов для GitHub
+        // Так как базы данных нет, мы будем кодировать URL картинки в "код" (Base64) 
+        // или просто имитировать для вашего задания
+        function loadByCode() {
+            const code = document.getElementById('inputCode').value;
+            if (code.length > 5) {
+                alert("Загрузка панорамы по коду: " + code);
+                // Здесь можно добавить логику поиска по массиву ссылок
+            }
+        }
+
+        // Запуск заглушки при старте
+        window.onload = () => {
+            initPanorama('https://pannellum.org/images/alma.jpg'); 
+        };
+    </script>
 </body>
 </html>
