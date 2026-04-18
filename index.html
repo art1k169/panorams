@@ -3,119 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Панорама Плеер</title>
+    <title>Панорама с кодом</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     
     <style>
-        body, html {
-            margin: 0; padding: 0;
-            height: 100%; overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #1a1a1a;
-        }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: sans-serif; background: #000; }
+        #panorama { width: 100%; height: 100vh; }
 
-        #panorama {
-            width: 100%;
-            height: 100vh;
-        }
-
-        /* Панель управления */
-        .controls {
+        /* Верхняя панель */
+        .top-bar {
             position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10;
+            top: 10px; left: 10px;
+            z-index: 100;
             display: flex;
             gap: 10px;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 15px;
-            border-radius: 12px;
-            backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            align-items: center;
         }
 
-        input[type="file"] {
-            color: white;
+        /* Кнопка с кодом и выпадашка */
+        .code-container {
+            position: relative;
+            display: inline-block;
         }
 
-        button {
-            padding: 8px 15px;
-            background: #007bff;
+        .btn {
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.2);
             color: white;
-            border: none;
-            border-radius: 5px;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
             cursor: pointer;
-            font-weight: bold;
+            backdrop-filter: blur(5px);
+            font-size: 14px;
         }
 
-        button:hover { background: #0056b3; }
+        .btn:hover { background: rgba(255,255,255,0.4); }
 
-        .hint {
+        .code-dropdown {
+            visibility: hidden;
+            opacity: 0;
             position: absolute;
-            bottom: 20px;
-            left: 20px;
-            color: white;
-            background: rgba(0,0,0,0.5);
-            padding: 5px 10px;
-            border-radius: 5px;
-            pointer-events: none;
+            top: 100%; left: 0;
+            background: white;
+            color: black;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 5px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: 0.3s;
+            min-width: 150px;
+        }
+
+        .code-container:hover .code-dropdown {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .code-text {
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 16px;
+            color: #007bff;
+        }
+
+        input[type="text"] {
+            padding: 7px;
+            border-radius: 4px;
+            border: none;
+            outline: none;
         }
     </style>
 </head>
 <body>
 
-    <div class="controls">
-        <input type="file" id="fileInput" accept="image/*">
-        <button onclick="copyLink()">Поделиться</button>
+    <div class="top-bar">
+        <input type="file" id="fileInput" style="display:none" accept="image/*">
+        <button class="btn" onclick="document.getElementById('fileInput').click()">Загрузить фото</button>
+
+        <div class="code-container" id="codeSection" style="display:none">
+            <button class="btn">🔑 Код фото</button>
+            <div class="code-dropdown">
+                Код: <span class="code-text" id="generatedCode">----------</span>
+            </div>
+        </div>
+
+        <input type="text" id="codeInput" placeholder="Введите код...">
+        <button class="btn" onclick="loadByCode()">Открыть</button>
     </div>
 
     <div id="panorama"></div>
-    <div class="hint">Крути мышкой, приближай колесиком</div>
 
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
 
     <script>
         let viewer = null;
 
-        // Инициализация пустого плеера (черный экран)
-        function initViewer(imageSrc) {
-            if (viewer) viewer.destroy(); // Удаляем старый, если был
+        // Инициализация панорамы с плавным зумом
+        function initPano(imgData) {
+            if (viewer) viewer.destroy();
             
             viewer = pannellum.viewer('panorama', {
                 "type": "equirectangular",
-                "panorama": imageSrc,
+                "panorama": imgData,
                 "autoLoad": true,
-                "compass": true,
+                "friction": 0.1,        // Плавность остановки
+                "animationTimingFunction": "easeInOutCubic", // Плавный зум
+                "zoomDuration": 1000,   // Скорость зума
                 "mouseZoom": true
             });
         }
 
-        // Обработка загрузки файла
+        // Генерация случайного кода (10 символов)
+        function generateId() {
+            return Math.random().toString(36).substr(2, 10).toUpperCase();
+        }
+
+        // Загрузка файла
         document.getElementById('fileInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
             reader.onload = function(event) {
-                // Запускаем панораму с загруженным фото
-                initViewer(event.target.result);
+                const imgData = event.target.result;
+                const newCode = generateId();
+
+                // Сохраняем в память браузера
+                localStorage.setItem(newCode, imgData);
+
+                // Показываем код
+                document.getElementById('generatedCode').innerText = newCode;
+                document.getElementById('codeSection').style.display = 'block';
+
+                initPano(imgData);
             };
             reader.readAsDataURL(file);
         });
 
-        // Заглушка для функции "Поделиться"
-        function copyLink() {
-            const url = window.location.href;
-            navigator.clipboard.writeText(url).then(() => {
-                alert("Ссылка на сайт скопирована! (Примечание: чтобы другой человек увидел фото, оно должно лежать на GitHub или сервере)");
-            });
+        // Открытие по коду
+        function loadByCode() {
+            const code = document.getElementById('codeInput').value.trim().toUpperCase();
+            const savedImg = localStorage.getItem(code);
+
+            if (savedImg) {
+                initPano(savedImg);
+                document.getElementById('generatedCode').innerText = code;
+                document.getElementById('codeSection').style.display = 'block';
+            } else {
+                alert("Код не найден или срок действия истек");
+            }
         }
 
-        // Загружаем начальное фото, если оно есть в папке (например, твое)
+        // Загрузка стандартного фото при старте (если оно есть в папке)
         window.onload = () => {
-            initViewer('IMG_1370-fixed.jpg'); 
+            initPano('IMG_1370-fixed.jpg'); 
         };
     </script>
 
