@@ -3,134 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panorama Pro Storage</title>
+    <title>360° Panorama Viewer</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
         #panorama { width: 100%; height: 100vh; }
 
-        .ui-panel {
+        .controls {
             position: absolute;
-            top: 15px; left: 15px;
+            top: 20px; left: 20px;
             z-index: 1000;
-            display: flex; gap: 10px; align-items: center;
-            background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px; backdrop-filter: blur(10px);
+            display: flex;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 12px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .btn {
-            background: #333; color: white; border: 1px solid #555;
-            padding: 8px 15px; border-radius: 6px; cursor: pointer; transition: 0.2s;
+            background: #2ecc71;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.3s;
         }
 
-        .btn:hover { background: #555; }
+        .btn:hover { background: #27ae60; }
+        .btn-share { background: #3498db; }
+        .btn-share:hover { background: #2980b9; }
 
-        .code-box { position: relative; display: none; }
-        .code-box:hover .dropdown { opacity: 1; visibility: visible; }
-
-        .dropdown {
-            position: absolute; top: 100%; left: 0; margin-top: 8px;
-            background: white; padding: 10px; border-radius: 6px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            opacity: 0; visibility: hidden; transition: 0.2s; min-width: 140px;
-        }
-
-        .code-value { font-family: monospace; font-weight: bold; color: #ff4757; font-size: 1.1em; }
-
-        input { padding: 8px; border-radius: 5px; border: none; width: 130px; }
+        #fileInput { display: none; }
     </style>
 </head>
 <body>
 
-<div class="ui-panel">
-    <input type="file" id="fileInput" hidden accept="image/*">
-    <button class="btn" onclick="document.getElementById('fileInput').click()">📁 Загрузить</button>
-
-    <div class="code-box" id="codeWrapper">
-        <button class="btn">🔑 Код</button>
-        <div class="dropdown">
-            <small style="color: #666">Ваш код:</small><br>
-            <span class="code-value" id="displayCode">----------</span>
-        </div>
+    <div class="controls">
+        <input type="file" id="fileInput" accept="image/*">
+        <button class="btn" onclick="document.getElementById('fileInput').click()">📁 Выбрать фото</button>
+        <button class="btn btn-share" onclick="copyShareLink()">🔗 Копировать ссылку</button>
     </div>
 
-    <input type="text" id="codeInput" placeholder="Введите код...">
-    <button class="btn" onclick="loadFromDB()" style="background: #1e90ff; border: none;">Открыть</button>
-</div>
+    <div id="panorama"></div>
 
-<div id="panorama"></div>
+    <script>
+        let viewer = null;
+        let currentImgName = 'IMG_1370-fixed.jpg'; // Имя по умолчанию
 
-<script>
-    let viewer = null;
-    let db;
+        // Функция запуска панорамы
+        function initPano(source) {
+            if (viewer) viewer.destroy();
 
-    // 1. Инициализация базы данных в браузере
-    const request = indexedDB.open("PanoramaDB", 1);
-    request.onupgradeneeded = e => {
-        db = e.target.result;
-        db.createObjectStore("photos");
-    };
-    request.onsuccess = e => { db = e.target.result; };
+            viewer = pannellum.viewer('panorama', {
+                "type": "equirectangular",
+                "panorama": source,
+                "autoLoad": true,
+                "autoRotate": -1,
+                "friction": 0.1,
+                "zoomDuration": 1500,
+                "animationTimingFunction": "easeInOutQuart",
+                "mouseZoom": true,
+                "showControls": true
+            });
+        }
 
-    function renderPano(imgData) {
-        if (viewer) viewer.destroy();
-        viewer = pannellum.viewer('panorama', {
-            "type": "equirectangular",
-            "panorama": imgData,
-            "autoLoad": true,
-            "friction": 0.1,
-            "zoomDuration": 1500, // Очень плавный зум
-            "animationTimingFunction": "easeInOutCubic",
-            "mouseZoom": true
-        });
-    }
+        // 1. Обработка локальной загрузки (для теста)
+        document.getElementById('fileInput').onchange = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
 
-    // 2. Сохранение фото
-    document.getElementById('fileInput').onchange = function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            const imgData = event.target.result;
-            const newCode = Math.random().toString(36).substring(2, 12).toUpperCase();
-
-            const transaction = db.transaction(["photos"], "readwrite");
-            transaction.objectStore("photos").add(imgData, newCode);
-
-            document.getElementById('displayCode').innerText = newCode;
-            document.getElementById('codeWrapper').style.display = 'block';
-            renderPano(imgData);
+            currentImgName = file.name; // Запоминаем имя для ссылки
+            const reader = new FileReader();
+            reader.onload = (event) => initPano(event.target.result);
+            reader.readAsDataURL(file);
         };
-        reader.readAsDataURL(file);
-    };
 
-    // 3. Загрузка по коду (даже после перезагрузки)
-    function loadFromDB() {
-        const code = document.getElementById('codeInput').value.trim().toUpperCase();
-        if (!code) return;
+        // 2. Функция "Поделиться"
+        function copyShareLink() {
+            // Создаем ссылку вида: https://твой-сайт.io/?img=название_файла.jpg
+            const baseUrl = window.location.origin + window.location.pathname;
+            const shareUrl = `${baseUrl}?img=${currentImgName}`;
+            
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                alert("Ссылка скопирована!\nУбедитесь, что файл с именем '" + currentImgName + "' загружен в ваш репозиторий GitHub.");
+            });
+        }
 
-        const transaction = db.transaction(["photos"], "readonly");
-        const getRequest = transaction.objectStore("photos").get(code);
+        // 3. Логика при открытии страницы
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const imgFromUrl = urlParams.get('img');
 
-        getRequest.onsuccess = () => {
-            if (getRequest.result) {
-                renderPano(getRequest.result);
-                document.getElementById('displayCode').innerText = code;
-                document.getElementById('codeWrapper').style.display = 'block';
+            if (imgFromUrl) {
+                currentImgName = imgFromUrl;
+                initPano(imgFromUrl);
             } else {
-                alert("Код не найден в памяти этого браузера!");
+                // Пытаемся открыть дефолтное фото
+                initPano(currentImgName);
             }
         };
-    }
-
-    window.onload = () => {
-        // Попытка загрузить стандартное фото
-        renderPano('IMG_1370-fixed.jpg');
-    };
-</script>
+    </script>
 
 </body>
 </html>
