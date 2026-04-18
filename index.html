@@ -3,27 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>360° Panorama Viewer</title>
+    <title>360° Panorama Viewer + Cloud Memory</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
 
     <style>
-        body, html { 
-            margin: 0; 
-            padding: 0; 
-            height: 100%; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            overflow: hidden; 
-            background: #111; 
-        }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; background: #111; }
+        #panorama { width: 100%; height: 100vh; }
 
-        #panorama { 
-            width: 100%; 
-            height: 100vh; 
-        }
-
-        /* Контейнер управления */
         .ui-overlay {
             position: absolute;
             top: 20px;
@@ -32,37 +20,28 @@
             z-index: 100;
             display: flex;
             gap: 15px;
-            align-items: flex-start;
         }
 
-        /* Общие стили кнопок */
         .btn {
-            background: rgba(40, 40, 40, 0.9);
+            background: rgba(30, 30, 30, 0.9);
             color: white;
             padding: 10px 20px;
             border-radius: 6px;
             cursor: pointer;
-            border: 1px solid rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.1);
             font-size: 14px;
-            transition: all 0.2s;
-            display: inline-block;
+            transition: 0.2s;
         }
         .btn:hover { background: #333; border-color: #2196F3; }
 
-        /* Секция с кодом и "мост" для ховера */
         .code-wrapper {
             position: relative;
-            padding-bottom: 20px; /* Тот самый невидимый мост */
-            margin-bottom: -20px;
+            padding-bottom: 25px; /* Мост для ховера */
+            margin-bottom: -25px;
         }
 
-        .code-trigger-btn {
-            background: #2196F3;
-            border: none;
-            font-weight: bold;
-        }
+        .code-trigger-btn { background: #2196F3; border: none; font-weight: bold; }
 
-        /* Всплывающее окно */
         .code-popup {
             display: none;
             position: absolute;
@@ -72,55 +51,30 @@
             background: white;
             color: #333;
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            width: 260px;
+            border-radius: 12px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            width: 280px;
             text-align: center;
         }
 
-        /* Показываем при наведении на обертку */
-        .code-wrapper:hover .code-popup {
-            display: block;
-        }
-
-        .code-popup h3 { margin: 0 0 10px 0; font-size: 14px; color: #666; }
+        .code-wrapper:hover .code-popup { display: block; }
         
         .generated-code {
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             font-size: 22px;
             font-weight: bold;
             color: #d32f2f;
-            letter-spacing: 2px;
             display: block;
-            margin-bottom: 15px;
+            margin: 10px 0;
             background: #fdf0f0;
-            padding: 5px;
-            border-radius: 4px;
-        }
-
-        .input-group {
-            display: flex;
-            gap: 5px;
-            border-top: 1px solid #eee;
-            padding-top: 15px;
-        }
-
-        #inputCode {
-            flex: 1;
             padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            text-transform: uppercase;
+            border-radius: 6px;
+            border: 1px dashed #d32f2f;
         }
 
-        .go-btn {
-            background: #28a745;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 4px;
-            cursor: pointer;
-        }
+        .input-group { display: flex; gap: 5px; margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px; }
+        #inputCode { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; text-transform: uppercase; }
+        .go-btn { background: #28a745; color: white; border: none; padding: 0 15px; border-radius: 4px; cursor: pointer; }
 
         input[type="file"] { display: none; }
     </style>
@@ -128,19 +82,16 @@
 <body>
 
     <div class="ui-overlay">
-        <label class="btn">
-            Загрузить фото
-            <input type="file" id="fileInput" accept="image/*">
-        </label>
+        <label class="btn">Загрузить фото <input type="file" id="fileInput" accept="image/*"></label>
 
         <div class="code-wrapper">
             <div class="btn code-trigger-btn">Код / Поделиться</div>
             <div class="code-popup">
-                <h3>Ваш код панорамы:</h3>
-                <span class="generated-code" id="generatedCode">НЕТ ФОТО</span>
+                <small style="color: #888">Ваш текущий код:</small>
+                <span class="generated-code" id="generatedCode">------</span>
                 
                 <div class="input-group">
-                    <input type="text" id="inputCode" placeholder="Код..." maxlength="10">
+                    <input type="text" id="inputCode" placeholder="Вставьте код" maxlength="10">
                     <button class="go-btn" onclick="loadByCode()">ОК</button>
                 </div>
             </div>
@@ -151,35 +102,24 @@
 
     <script>
         let viewer = null;
-        let storedImages = {}; // Имитация базы данных (работает до перезагрузки)
 
-        // Функция инициализации вьювера
+        // Инициализация вьювера с плавным зумом
         function initPanorama(imageSrc) {
-            if (viewer) viewer.destroy(); // Удаляем старую, если была
-            
+            if (viewer) viewer.destroy();
             viewer = pannellum.viewer('panorama', {
                 "type": "equirectangular",
                 "panorama": imageSrc,
                 "autoLoad": true,
-                "autoRotate": -2, // Легкое вращение для красоты
-                "friction": 0.1,  // Плавность остановки
-                "zoomDuration": 1200, // Плавный зум (мс)
-                "animationTimingFunction": "easeInOutQuad",
-                "showControls": true
+                "zoomDuration": 1500, // Очень плавный зум
+                "animationTimingFunction": "easeInOutQuart"
             });
         }
 
-        // Генератор 10 символов
         function generateId() {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Без похожих 0/O или 1/I
-            let result = '';
-            for (let i = 0; i < 10; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
+            return Math.random().toString(36).substring(2, 12).toUpperCase();
         }
 
-        // Логика выбора файла
+        // Загрузка нового файла
         document.getElementById('fileInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -189,34 +129,34 @@
                 const imageData = event.target.result;
                 const newCode = generateId();
 
-                // 1. Запускаем панораму
                 initPanorama(imageData);
-
-                // 2. Показываем код
                 document.getElementById('generatedCode').innerText = newCode;
 
-                // 3. Сохраняем в "базу"
-                storedImages[newCode] = imageData;
-                
-                console.log("Фото загружено. Код:", newCode);
+                // СОХРАНЯЕМ В ПАМЯТЬ БРАУЗЕРА
+                try {
+                    localStorage.setItem(newCode, imageData);
+                } catch (e) {
+                    alert("Фото слишком тяжелое для памяти браузера, но оно будет работать, пока вы не обновите страницу.");
+                }
             };
             reader.readAsDataURL(file);
         });
 
-        // Логика ввода кода
+        // Поиск по коду в LocalStorage
         function loadByCode() {
             const code = document.getElementById('inputCode').value.trim().toUpperCase();
+            const savedImage = localStorage.getItem(code);
             
-            if (storedImages[code]) {
-                initPanorama(storedImages[code]);
+            if (savedImage) {
+                initPanorama(savedImage);
                 document.getElementById('generatedCode').innerText = code;
-                alert("Панорама по коду " + code + " загружена!");
+                alert("Успешно загружено из памяти!");
             } else {
-                alert("Код не найден! Напоминание: так как это статичная страница без сервера, коды работают только пока вы не обновили вкладку.");
+                alert("Код не найден. Либо вы очистили кэш, либо это фото было загружено на другом компьютере.");
             }
         }
 
-        // Загрузка дефолтной картинки (пример)
+        // Стартовое фото
         window.onload = () => {
             initPanorama('https://pannellum.org/images/alma.jpg');
         };
