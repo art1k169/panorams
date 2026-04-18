@@ -3,158 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Панорама 360°</title>
+    <title>Panorama Pro Storage</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
-        #panorama { width: 100%; height: 100vh; background: #111; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        #panorama { width: 100%; height: 100vh; }
 
         .ui-panel {
             position: absolute;
             top: 15px; left: 15px;
             z-index: 1000;
-            display: flex;
-            gap: 10px;
-            align-items: center;
+            display: flex; gap: 10px; align-items: center;
+            background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px; backdrop-filter: blur(10px);
         }
 
         .btn {
-            background: rgba(40, 40, 40, 0.8);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.2);
-            padding: 10px 15px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: 0.3s;
-            font-size: 13px;
-            backdrop-filter: blur(8px);
+            background: #333; color: white; border: 1px solid #555;
+            padding: 8px 15px; border-radius: 6px; cursor: pointer; transition: 0.2s;
         }
 
-        .btn:hover { background: rgba(80, 80, 80, 0.9); }
+        .btn:hover { background: #555; }
 
-        .code-box {
-            position: relative;
-            display: none; /* Скрыт пока нет фото */
-        }
-
+        .code-box { position: relative; display: none; }
         .code-box:hover .dropdown { opacity: 1; visibility: visible; }
 
         .dropdown {
-            position: absolute;
-            top: 100%; left: 0;
-            margin-top: 5px;
-            background: white;
-            padding: 12px;
-            border-radius: 6px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
-            opacity: 0; visibility: hidden;
-            transition: 0.2s;
-            min-width: 140px;
+            position: absolute; top: 100%; left: 0; margin-top: 8px;
+            background: white; padding: 10px; border-radius: 6px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            opacity: 0; visibility: hidden; transition: 0.2s; min-width: 140px;
         }
 
-        .code-value {
-            font-family: monospace;
-            font-weight: bold;
-            font-size: 16px;
-            color: #e91e63;
-            display: block;
-            margin-top: 5px;
-        }
+        .code-value { font-family: monospace; font-weight: bold; color: #ff4757; font-size: 1.1em; }
 
-        #codeInput {
-            padding: 10px;
-            border-radius: 6px;
-            border: none;
-            width: 120px;
-            background: rgba(255,255,255,0.9);
-        }
+        input { padding: 8px; border-radius: 5px; border: none; width: 130px; }
     </style>
 </head>
 <body>
 
-    <div class="ui-panel">
-        <input type="file" id="fileInput" hidden accept="image/*">
-        <button class="btn" onclick="document.getElementById('fileInput').click()">📁 Загрузить фото</button>
+<div class="ui-panel">
+    <input type="file" id="fileInput" hidden accept="image/*">
+    <button class="btn" onclick="document.getElementById('fileInput').click()">📁 Загрузить</button>
 
-        <div class="code-box" id="codeWrapper">
-            <button class="btn">🔑 Код фото</button>
-            <div class="dropdown">
-                <small style="color: #666">Ваш код:</small>
-                <span class="code-value" id="displayCode">----------</span>
-            </div>
+    <div class="code-box" id="codeWrapper">
+        <button class="btn">🔑 Код</button>
+        <div class="dropdown">
+            <small style="color: #666">Ваш код:</small><br>
+            <span class="code-value" id="displayCode">----------</span>
         </div>
-
-        <input type="text" id="codeInput" placeholder="Вставить код...">
-        <button class="btn" onclick="applyCode()" style="background: #007bff;">Открыть</button>
     </div>
 
-    <div id="panorama"></div>
+    <input type="text" id="codeInput" placeholder="Введите код...">
+    <button class="btn" onclick="loadFromDB()" style="background: #1e90ff; border: none;">Открыть</button>
+</div>
 
-    <script>
-        let viewer = null;
-        let currentPhotos = {}; // Хранилище сессии
+<div id="panorama"></div>
 
-        // Функция запуска панорамы
-        function renderPano(imagePath) {
-            if (viewer) viewer.destroy();
+<script>
+    let viewer = null;
+    let db;
 
-            viewer = pannellum.viewer('panorama', {
-                "type": "equirectangular",
-                "panorama": imagePath,
-                "autoLoad": true,
-                "autoRotate": -1,
-                "friction": 0.15,
-                "zoomDuration": 1200, // Плавный зум
-                "animationTimingFunction": "easeInOutQuart",
-                "mouseZoom": true,
-                "showControls": true
-            });
-        }
+    // 1. Инициализация базы данных в браузере
+    const request = indexedDB.open("PanoramaDB", 1);
+    request.onupgradeneeded = e => {
+        db = e.target.result;
+        db.createObjectStore("photos");
+    };
+    request.onsuccess = e => { db = e.target.result; };
 
-        // Генератор кода
-        function makeId() {
-            return Math.random().toString(36).substring(2, 12).toUpperCase();
-        }
+    function renderPano(imgData) {
+        if (viewer) viewer.destroy();
+        viewer = pannellum.viewer('panorama', {
+            "type": "equirectangular",
+            "panorama": imgData,
+            "autoLoad": true,
+            "friction": 0.1,
+            "zoomDuration": 1500, // Очень плавный зум
+            "animationTimingFunction": "easeInOutCubic",
+            "mouseZoom": true
+        });
+    }
 
-        // Обработка файла
-        document.getElementById('fileInput').onchange = function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
+    // 2. Сохранение фото
+    document.getElementById('fileInput').onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
 
-            const objectURL = URL.createObjectURL(file);
-            const newCode = makeId();
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const imgData = event.target.result;
+            const newCode = Math.random().toString(36).substring(2, 12).toUpperCase();
 
-            // Сохраняем в текущую сессию
-            currentPhotos[newCode] = objectURL;
+            const transaction = db.transaction(["photos"], "readwrite");
+            transaction.objectStore("photos").add(imgData, newCode);
 
-            // Обновляем интерфейс
             document.getElementById('displayCode').innerText = newCode;
             document.getElementById('codeWrapper').style.display = 'block';
-
-            renderPano(objectURL);
+            renderPano(imgData);
         };
+        reader.readAsDataURL(file);
+    };
 
-        // Открытие по коду
-        function applyCode() {
-            const code = document.getElementById('codeInput').value.trim().toUpperCase();
-            if (currentPhotos[code]) {
-                renderPano(currentPhotos[code]);
+    // 3. Загрузка по коду (даже после перезагрузки)
+    function loadFromDB() {
+        const code = document.getElementById('codeInput').value.trim().toUpperCase();
+        if (!code) return;
+
+        const transaction = db.transaction(["photos"], "readonly");
+        const getRequest = transaction.objectStore("photos").get(code);
+
+        getRequest.onsuccess = () => {
+            if (getRequest.result) {
+                renderPano(getRequest.result);
                 document.getElementById('displayCode').innerText = code;
+                document.getElementById('codeWrapper').style.display = 'block';
             } else {
-                alert("Код не найден. Загрузите фото заново, чтобы получить новый код.");
+                alert("Код не найден в памяти этого браузера!");
             }
-        }
-
-        // Загрузка начального фото при запуске
-        window.onload = () => {
-            // Если в папке лежит IMG_1370-fixed.jpg, оно откроется. 
-            // Если нет — просто будет черный экран до первой загрузки.
-            renderPano('IMG_1370-fixed.jpg'); 
         };
-    </script>
+    }
+
+    window.onload = () => {
+        // Попытка загрузить стандартное фото
+        renderPano('IMG_1370-fixed.jpg');
+    };
+</script>
 
 </body>
 </html>
