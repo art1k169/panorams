@@ -2,129 +2,163 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Custom Street View</title>
+    <title>Global Panorama Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
-    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
-
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        #map { height: 100vh; width: 100vw; z-index: 1; }
+        body { margin: 0; font-family: sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100vw; }
         
-        /* Стили окна панорамы */
-        #panorama-container {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: black; z-index: 1000; display: none;
+        /* Поиск */
+        #search-box {
+            position: absolute; top: 10px; left: 50px; z-index: 1000;
+            background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
-        #close-pano {
-            position: absolute; top: 20px; right: 20px; z-index: 1001;
-            padding: 10px 20px; background: white; border: none; cursor: pointer; border-radius: 5px;
-        }
+        #search-box input { border: 1px solid #ccc; padding: 8px; width: 200px; border-radius: 4px; }
 
-        /* Окно загрузки */
-        .custom-popup { padding: 10px; min-width: 200px; }
-        .custom-popup input { display: block; margin-bottom: 10px; width: 100%; }
-        .custom-popup button { width: 100%; background: #4285f4; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; }
-
-        /* Тот самый человечек */
+        /* Человечек */
         #pegman {
             position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px;
             background: #fbbc05; border-radius: 50%; cursor: grab; z-index: 500;
             display: flex; align-items: center; justify-content: center; font-size: 24px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s;
+        }
+        #pegman:active { cursor: grabbing; transform: scale(1.1); }
+
+        /* Окно панорамы */
+        #panorama-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: black; z-index: 2000; display: none;
+        }
+        #close-pano {
+            position: absolute; top: 20px; right: 20px; z-index: 2001;
+            padding: 10px 20px; background: white; border: none; cursor: pointer; border-radius: 5px;
         }
     </style>
 </head>
 <body>
 
-<div id="map"></div>
+<div id="search-box">
+    <input type="text" id="city-query" placeholder="Поиск города..." onkeypress="if(event.key==='Enter') searchCity()">
+</div>
 
-<div id="pegman" draggable="true">🚶‍♂️</div>
+<div id="map"></div>
+<div id="pegman" draggable="true" title="Перетащи на метку">🚶‍♂️</div>
 
 <div id="panorama-container">
     <button id="close-pano">❌ Закрыть</button>
-    <div id="panorama" style="width: 100%; height: 100%;"></div>
+    <div id="panorama"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
 
 <script>
-    const map = L.map('map').setView([55.75, 37.61], 13);
+    // 1. Инициализация и Спавн в последней точке
+    const lastPos = JSON.parse(localStorage.getItem('lastPos')) || { lat: 55.75, lng: 37.61, zoom: 13 };
+    const map = L.map('map').setView([lastPos.lat, lastPos.lng], lastPos.zoom);
+    
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    let savedPoints = []; // Хранилище точек
-    let currentCoords = null;
+    // Сохраняем позицию при движении карты
+    map.on('moveend', () => {
+        const center = map.getCenter();
+        localStorage.setItem('lastPos', JSON.stringify({
+            lat: center.lat, lng: center.lng, zoom: map.getZoom()
+        }));
+    });
 
-    // 1. Клик правой кнопкой — вызываем меню
+    let globalPoints = []; // Здесь будут все метки мира
+
+    // 2. Поиск городов (Nominatim API)
+    async function searchCity() {
+        const query = document.getElementById('city-query').value;
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
+        const data = await response.json();
+        if (data.length > 0) {
+            map.setView([data[0].lat, data[0].lon], 12);
+        }
+    }
+
+    // 3. Логика добавления панорамы (ПКМ)
     map.on('contextmenu', (e) => {
-        currentCoords = e.latlng;
         const content = `
-            <div class="custom-popup">
-                <strong>Добавить панораму</strong><br><br>
-                <input type="text" id="p-name" placeholder="Название места">
-                <input type="file" id="p-file" accept="image/*">
-                <button onclick="savePoint()">Создать точку</button>
+            <div style="padding:10px">
+                <strong>Новая панорама</strong><br><br>
+                <input type="text" id="p-name" placeholder="Название"><br><br>
+                <input type="file" id="p-file" accept="image/*"><br><br>
+                <button onclick="uploadPanorama(${e.latlng.lat}, ${e.latlng.lng})">Опубликовать для всех</button>
             </div>
         `;
         L.popup().setLatLng(e.latlng).setContent(content).openOn(map);
     });
 
-    // 2. Сохранение точки с картинкой
-    function savePoint() {
+    // 4. "Загрузка" (имитация отправки на сервер)
+    function uploadPanorama(lat, lng) {
         const name = document.getElementById('p-name').value;
-        const fileInput = document.getElementById('p-file');
+        const file = document.getElementById('p-file').files[0];
         
-        if (!name || !fileInput.files[0]) {
-            alert("Введите название и выберите фото!");
-            return;
-        }
+        if (!name || !file) return alert("Заполни все поля!");
 
         const reader = new FileReader();
-        reader.onload = function(e) {
-            const imgData = e.target.result; // base64 картинки
-            
-            const marker = L.marker(currentCoords).addTo(map);
-            marker.bindTooltip(name, { permanent: true, direction: 'top' });
-            
-            // Сохраняем данные в массив для проверки человечком
-            savedPoints.push({
-                latlng: currentCoords,
-                image: imgData,
-                marker: marker
-            });
-            
+        reader.onload = function(event) {
+            const newPoint = {
+                id: Date.now(),
+                lat: lat,
+                lng: lng,
+                name: name,
+                image: event.target.result // В реальности тут будет URL с сервера
+            };
+
+            // В реальном приложении здесь должен быть fetch('/api/save', {method: 'POST', body: newPoint})
+            addMarkerToMap(newPoint);
+            globalPoints.push(newPoint);
             map.closePopup();
+            
+            // Сохраним локально для примера, чтобы "видеть" панорамы
+            let saved = JSON.parse(localStorage.getItem('sharedPoints') || '[]');
+            saved.push(newPoint);
+            localStorage.setItem('sharedPoints', JSON.stringify(saved));
         };
-        reader.readAsDataURL(fileInput.files[0]);
+        reader.readAsDataURL(file);
     }
 
-    // 3. Логика человечка (Drag & Drop)
-    const pegman = document.getElementById('pegman');
+    function addMarkerToMap(point) {
+        const marker = L.marker([point.lat, point.lng]).addTo(map);
+        marker.bindTooltip(point.name);
+        point.markerRef = marker;
+    }
 
-    pegman.addEventListener('dragend', (e) => {
-        // Получаем координаты, куда бросили человечка
-        const point = map.mouseEventToLatLng(e);
-        
-        // Ищем ближайшую сохраненную точку в радиусе
-        let found = null;
-        savedPoints.forEach(p => {
-            const dist = map.distance(point, p.latlng);
-            if (dist < 100) { // Если бросили ближе чем в 100 метрах от точки
-                found = p;
+    // Загрузка "чужих" меток при старте
+    window.onload = () => {
+        const shared = JSON.parse(localStorage.getItem('sharedPoints') || '[]');
+        shared.forEach(p => {
+            addMarkerToMap(p);
+            globalPoints.push(p);
+        });
+    };
+
+    // 5. Перетаскивание человечка
+    const pegman = document.getElementById('pegman');
+    pegman.ondragend = (e) => {
+        const mouseLatLng = map.mouseEventToLatLng(e);
+        let closest = null;
+        let minDist = 0.005; // Радиус захвата
+
+        globalPoints.forEach(p => {
+            const d = map.distance(mouseLatLng, [p.lat, p.lng]);
+            if (d < 200) { // 200 метров
+                closest = p;
             }
         });
 
-        if (found) {
-            openPanorama(found.image);
-        } else {
-            alert("Здесь нет панорамы! Бросайте человечка на созданный маркер.");
+        if (closest) {
+            openPano(closest.image);
         }
-    });
+    };
 
-    // 4. Открытие 3D панорамы
-    function openPanorama(img) {
+    function openPano(img) {
         document.getElementById('panorama-container').style.display = 'block';
-        
         pannellum.viewer('panorama', {
             "type": "equirectangular",
             "panorama": img,
@@ -132,7 +166,6 @@
         });
     }
 
-    // Закрытие
     document.getElementById('close-pano').onclick = () => {
         document.getElementById('panorama-container').style.display = 'none';
     };
