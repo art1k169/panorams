@@ -4,138 +4,221 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>360° Panorama Viewer</title>
+    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
-    <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; background: #1a1a1a; }
-        #panorama { width: 100%; height: 100vh; }
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
 
-        /* Верхняя панель управления */
-        .controls {
+    <style>
+        body, html { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            overflow: hidden; 
+            background: #111; 
+        }
+
+        #panorama { 
+            width: 100%; 
+            height: 100vh; 
+        }
+
+        /* Контейнер управления */
+        .ui-overlay {
             position: absolute;
-            top: 10px;
+            top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            z-index: 10;
+            z-index: 100;
             display: flex;
-            gap: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 8px;
-            transition: opacity 0.3s;
+            gap: 15px;
+            align-items: flex-start;
         }
 
-        input[type="file"] { display: none; }
+        /* Общие стили кнопок */
         .btn {
-            background: #444;
+            background: rgba(40, 40, 40, 0.9);
             color: white;
-            padding: 5px 15px;
-            border-radius: 4px;
+            padding: 10px 20px;
+            border-radius: 6px;
             cursor: pointer;
-            border: 1px solid #666;
+            border: 1px solid rgba(255,255,255,0.2);
             font-size: 14px;
-        }
-        .btn:hover { background: #666; }
-
-        /* Секция с кодом (по наведению) */
-        .code-section {
-            position: relative;
+            transition: all 0.2s;
             display: inline-block;
         }
-        .code-trigger { background: #2196F3; border: none; }
+        .btn:hover { background: #333; border-color: #2196F3; }
+
+        /* Секция с кодом и "мост" для ховера */
+        .code-wrapper {
+            position: relative;
+            padding-bottom: 20px; /* Тот самый невидимый мост */
+            margin-bottom: -20px;
+        }
+
+        .code-trigger-btn {
+            background: #2196F3;
+            border: none;
+            font-weight: bold;
+        }
+
+        /* Всплывающее окно */
         .code-popup {
             display: none;
             position: absolute;
-            top: 40px;
-            left: 0;
+            top: 45px;
+            left: 50%;
+            transform: translateX(-50%);
             background: white;
-            color: black;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            width: 250px;
+            color: #333;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 260px;
+            text-align: center;
         }
-        .code-section:hover .code-popup { display: block; }
+
+        /* Показываем при наведении на обертку */
+        .code-wrapper:hover .code-popup {
+            display: block;
+        }
+
+        .code-popup h3 { margin: 0 0 10px 0; font-size: 14px; color: #666; }
         
-        .code-display { font-family: monospace; font-weight: bold; color: #d32f2f; }
-        #inputCode { width: 100px; padding: 2px; }
+        .generated-code {
+            font-family: 'Courier New', monospace;
+            font-size: 22px;
+            font-weight: bold;
+            color: #d32f2f;
+            letter-spacing: 2px;
+            display: block;
+            margin-bottom: 15px;
+            background: #fdf0f0;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 5px;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+
+        #inputCode {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .go-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        input[type="file"] { display: none; }
     </style>
 </head>
 <body>
 
-    <div class="controls">
+    <div class="ui-overlay">
         <label class="btn">
             Загрузить фото
             <input type="file" id="fileInput" accept="image/*">
         </label>
 
-        <div class="code-section">
-            <button class="btn code-trigger">Код/Поделиться</button>
+        <div class="code-wrapper">
+            <div class="btn code-trigger-btn">Код / Поделиться</div>
             <div class="code-popup">
-                <div>Ваш код: <span class="code-display" id="generatedCode">------</span></div>
-                <hr>
-                <input type="text" id="inputCode" placeholder="Вставьте код">
-                <button class="btn" onclick="loadByCode()" style="color: black; padding: 2px 5px;">Ок</button>
-                <p style="font-size: 10px; margin-top: 5px; color: #666;">
-                    *На GitHub используйте прямую ссылку на фото для генерации кода.
-                </p>
+                <h3>Ваш код панорамы:</h3>
+                <span class="generated-code" id="generatedCode">НЕТ ФОТО</span>
+                
+                <div class="input-group">
+                    <input type="text" id="inputCode" placeholder="Код..." maxlength="10">
+                    <button class="go-btn" onclick="loadByCode()">ОК</button>
+                </div>
             </div>
         </div>
     </div>
 
     <div id="panorama"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
-
     <script>
         let viewer = null;
+        let storedImages = {}; // Имитация базы данных (работает до перезагрузки)
 
-        // Инициализация пустого вьювера
+        // Функция инициализации вьювера
         function initPanorama(imageSrc) {
-            if (viewer) viewer.destroy();
+            if (viewer) viewer.destroy(); // Удаляем старую, если была
             
             viewer = pannellum.viewer('panorama', {
                 "type": "equirectangular",
                 "panorama": imageSrc,
                 "autoLoad": true,
-                "hfov": 110,
-                "friction": 0.1, // Плавность вращения
-                "zoomDuration": 1000, // Длительность плавного зума
-                "animationTimingFunction": "easeInOutQuad"
+                "autoRotate": -2, // Легкое вращение для красоты
+                "friction": 0.1,  // Плавность остановки
+                "zoomDuration": 1200, // Плавный зум (мс)
+                "animationTimingFunction": "easeInOutQuad",
+                "showControls": true
             });
         }
 
-        // Генерация рандомного кода (10 символов)
-        function generateRandomCode() {
-            return Math.random().toString(36).substring(2, 12).toUpperCase();
+        // Генератор 10 символов
+        function generateId() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Без похожих 0/O или 1/I
+            let result = '';
+            for (let i = 0; i < 10; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
         }
 
-        // Обработка загрузки файла
+        // Логика выбора файла
         document.getElementById('fileInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
             reader.onload = function(event) {
-                initPanorama(event.target.result);
-                document.getElementById('generatedCode').innerText = generateRandomCode();
+                const imageData = event.target.result;
+                const newCode = generateId();
+
+                // 1. Запускаем панораму
+                initPanorama(imageData);
+
+                // 2. Показываем код
+                document.getElementById('generatedCode').innerText = newCode;
+
+                // 3. Сохраняем в "базу"
+                storedImages[newCode] = imageData;
+                
+                console.log("Фото загружено. Код:", newCode);
             };
             reader.readAsDataURL(file);
         });
 
-        // "Логика" кодов для GitHub
-        // Так как базы данных нет, мы будем кодировать URL картинки в "код" (Base64) 
-        // или просто имитировать для вашего задания
+        // Логика ввода кода
         function loadByCode() {
-            const code = document.getElementById('inputCode').value;
-            if (code.length > 5) {
-                alert("Загрузка панорамы по коду: " + code);
-                // Здесь можно добавить логику поиска по массиву ссылок
+            const code = document.getElementById('inputCode').value.trim().toUpperCase();
+            
+            if (storedImages[code]) {
+                initPanorama(storedImages[code]);
+                document.getElementById('generatedCode').innerText = code;
+                alert("Панорама по коду " + code + " загружена!");
+            } else {
+                alert("Код не найден! Напоминание: так как это статичная страница без сервера, коды работают только пока вы не обновили вкладку.");
             }
         }
 
-        // Запуск заглушки при старте
+        // Загрузка дефолтной картинки (пример)
         window.onload = () => {
-            initPanorama('https://pannellum.org/images/alma.jpg'); 
+            initPanorama('https://pannellum.org/images/alma.jpg');
         };
     </script>
 </body>
