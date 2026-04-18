@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Panorama Share</title>
+    <title>Мои Панорамы</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
@@ -12,29 +12,40 @@
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
         #panorama { width: 100%; height: 100vh; }
 
-        .ui {
+        .ui-overlay {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            display: flex; gap: 10px; background: rgba(0,0,0,0.7);
-            padding: 15px; border-radius: 10px; backdrop-filter: blur(10px);
+            background: rgba(0,0,0,0.7); padding: 15px; border-radius: 12px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+            color: white; min-width: 200px;
         }
+
+        .share-box { margin-top: 15px; padding-top: 15px; border-top: 1px solid #444; }
 
         .btn {
             background: #3498db; color: white; border: none;
-            padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;
+            padding: 8px 12px; border-radius: 5px; cursor: pointer;
+            width: 100%; font-weight: bold; transition: 0.3s;
         }
+        .btn:hover { background: #2980b9; }
 
-        .btn:disabled { background: #555; cursor: not-allowed; }
-
-        #status { color: #aaa; font-size: 12px; margin-top: 5px; display: block; }
+        input {
+            width: 100%; padding: 8px; border-radius: 5px; border: none;
+            margin-bottom: 10px; background: #222; color: white; box-sizing: border-box;
+        }
     </style>
 </head>
 <body>
 
-<div class="ui">
-    <div>
-        <input type="file" id="fileInput" hidden accept="image/*">
-        <button class="btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()">📁 Загрузить и получить ссылку</button>
-        <span id="status">Выберите панорамное фото</span>
+<div class="ui-overlay">
+    <h3 style="margin: 0 0 10px 0; font-size: 16px;">🌐 Открыть панораму</h3>
+    
+    <p style="font-size: 12px; color: #aaa; margin-bottom: 5px;">Введите имя файла из папки:</p>
+    <input type="text" id="fileNameInput" placeholder="Например: 1.jpg">
+    <button class="btn" onclick="loadByInput()">Посмотреть</button>
+
+    <div class="share-box">
+        <button class="btn" style="background: #2ecc71;" onclick="copyLink()">🔗 Ссылка для друга</button>
+        <p id="status" style="font-size: 10px; color: #2ecc71; margin-top: 5px; display: none;">Ссылка скопирована!</p>
     </div>
 </div>
 
@@ -42,74 +53,50 @@
 
 <script>
     let viewer = null;
-    // Это публичный Client-ID (для примера). Для серьезных проектов лучше завести свой на Imgur.
-    const IMGUR_CLIENT_ID = "546c25a59c58ad7"; 
+    let currentFile = "IMG_1370-fixed.jpg"; // Начальный файл
 
-    function render(url) {
+    function render(file) {
         if (viewer) viewer.destroy();
+        currentFile = file;
+
         viewer = pannellum.viewer('panorama', {
             "type": "equirectangular",
-            "panorama": url,
+            "panorama": file,
             "autoLoad": true,
-            "zoomDuration": 1500,
-            "animationTimingFunction": "easeInOutQuart"
+            "friction": 0.15,
+            "zoomDuration": 1200,
+            "animationTimingFunction": "easeInOutQuart",
+            "mouseZoom": true
         });
     }
 
-    // 1. Обработка выбора файла и загрузка в облако
-    document.getElementById('fileInput').onchange = function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+    // Загрузка по названию файла
+    function loadByInput() {
+        const val = document.getElementById('fileNameInput').value.trim();
+        if (val) render(val);
+    }
 
-        const status = document.getElementById('status');
-        const btn = document.getElementById('uploadBtn');
+    // Генерация ссылки
+    function copyLink() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('img', currentFile);
+        
+        navigator.clipboard.writeText(url.href).then(() => {
+            const status = document.getElementById('status');
+            status.style.display = 'block';
+            setTimeout(() => status.style.display = 'none', 3000);
+        });
+    }
 
-        status.innerText = "Загрузка в облако...";
-        btn.disabled = true;
-
-        // Отправляем фото на Imgur
-        const formData = new FormData();
-        formData.append("image", file);
-
-        fetch("https://api.imgur.com/3/image", {
-            method: "POST",
-            headers: { Authorization: `Client-ID ${IMGUR_CLIENT_ID}` },
-            body: formData
-        })
-        .then(res => res.json())
-        .then(res => {
-            if (res.success) {
-                const remoteUrl = res.data.link;
-                render(remoteUrl);
-                
-                // Создаем ссылку для друга
-                const shareUrl = window.location.origin + window.location.pathname + "?url=" + encodeURIComponent(remoteUrl);
-                
-                navigator.clipboard.writeText(shareUrl);
-                status.innerHTML = `Готово! <b style="color:#2ecc71">Ссылка скопирована</b>`;
-                alert("Ссылка создана и скопирована! Отправь её другу, и он увидит это фото.");
-            } else {
-                throw new Error("Ошибка Imgur");
-            }
-        })
-        .catch(err => {
-            alert("Ошибка при загрузке. Попробуй файл поменьше или другое фото.");
-            status.innerText = "Ошибка загрузки";
-        })
-        .finally(() => { btn.disabled = false; });
-    };
-
-    // 2. Чтение ссылки при открытии
+    // При загрузке страницы
     window.onload = () => {
         const params = new URLSearchParams(window.location.search);
-        const sharedUrl = params.get('url');
-
-        if (sharedUrl) {
-            render(sharedUrl);
-            document.getElementById('status').innerText = "Просмотр по ссылке";
+        const imgParam = params.get('img');
+        
+        if (imgParam) {
+            render(imgParam);
         } else {
-            // Твое дефолтное фото, если зашли просто так
-            render('IMG_1370-fixed.jpg'); 
+            render(currentFile);
         }
     };
 </script>
